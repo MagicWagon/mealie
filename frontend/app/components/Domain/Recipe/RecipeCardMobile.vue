@@ -120,7 +120,7 @@
                     size="small"
                     v-bind="tooltipProps"
                     :aria-label="$t('settings.organize')"
-                    @click.stop="$emit('organize')"
+                    @click.stop.prevent="$emit('organize')"
                   >
                     <v-icon>{{ $globals.icons.organizers }}</v-icon>
                   </v-btn>
