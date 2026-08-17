@@ -100,17 +100,6 @@
             </v-list-item>
           </v-list>
         </v-menu>
-        <ContextMenu
-          v-if="!$vuetify.display.smAndDown"
-          :items="[
-            {
-              title: $t('general.toggle-view'),
-              icon: $globals.icons.eye,
-              event: 'toggle-dense-view',
-            },
-          ]"
-          @toggle-dense-view="toggleMobileCards()"
-        />
         <v-btn
           v-if="canQuickOrganize"
           variant="text"
@@ -123,6 +112,17 @@
           </v-icon>
           {{ $vuetify.display.xs ? null : $t("general.select") }}
         </v-btn>
+        <ContextMenu
+          v-if="!$vuetify.display.smAndDown"
+          :items="[
+            {
+              title: $t('general.toggle-view'),
+              icon: $globals.icons.eye,
+              event: 'toggle-dense-view',
+            },
+          ]"
+          @toggle-dense-view="toggleMobileCards()"
+        />
       </template>
       <div
         v-else
@@ -334,6 +334,7 @@ const router = useRouter();
 const selectionMode = ref(false);
 const selectedRecipes = ref<Recipe[]>([]);
 const selectAllLoading = ref(false);
+let selectAllGeneration = 0;
 const organizerDialog = ref(false);
 const organizerMode = ref<"single" | "bulk">("single");
 const organizerRecipes = ref<Recipe[]>([]);
@@ -371,8 +372,14 @@ function enterSelectionMode() {
   clearSelection();
 }
 
+function invalidateSelectAll() {
+  selectAllGeneration += 1;
+  selectAllLoading.value = false;
+}
+
 function clearSelection() {
   selectedRecipes.value = [];
+  invalidateSelectAll();
 }
 
 function exitSelectionMode() {
@@ -381,17 +388,24 @@ function exitSelectionMode() {
 }
 
 async function selectAllResults() {
-  if (selectAllLoading.value) {
+  if (!selectionMode.value || selectAllLoading.value) {
     return;
   }
 
+  const generation = ++selectAllGeneration;
+  const querySnapshot = stableSerialize(props.query);
+  const searchQuery = { ...(props.query ?? {}) };
   selectAllLoading.value = true;
   try {
     const { data, error } = await api.recipes.search({
-      ...(props.query ?? {}),
+      ...searchQuery,
       page: 1,
       perPage: -1,
     });
+
+    if (!isCurrentSelectAllRequest(generation, querySnapshot)) {
+      return;
+    }
 
     if (error || !data) {
       alert.error(i18n.t("events.something-went-wrong"));
@@ -401,12 +415,40 @@ async function selectAllResults() {
     selectedRecipes.value = data.items.filter(recipe => !!recipeKey(recipe));
   }
   catch (error) {
+    if (!isCurrentSelectAllRequest(generation, querySnapshot)) {
+      return;
+    }
+
     console.error("Failed to select all recipe results", error);
     alert.error(i18n.t("events.something-went-wrong"));
   }
   finally {
-    selectAllLoading.value = false;
+    if (generation === selectAllGeneration) {
+      selectAllLoading.value = false;
+    }
   }
+}
+
+function isCurrentSelectAllRequest(generation: number, querySnapshot: string): boolean {
+  return generation === selectAllGeneration
+    && selectionMode.value
+    && stableSerialize(props.query) === querySnapshot;
+}
+
+function stableSerialize(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(item => stableSerialize(item)).join(",")}]`;
+  }
+
+  if (value !== null && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableSerialize(item)}`)
+      .join(",")}}`;
+  }
+
+  return JSON.stringify(value) ?? "undefined";
 }
 
 function openSingleOrganizer(recipe: Recipe) {
@@ -440,6 +482,10 @@ watch(
   },
   { deep: true },
 );
+
+onUnmounted(() => {
+  invalidateSelectAll();
+});
 
 const queryFilter = computed(() => {
   return props.query?.queryFilter || null;

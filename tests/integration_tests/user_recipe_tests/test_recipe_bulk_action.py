@@ -1,5 +1,6 @@
 from collections.abc import Generator
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 import sqlalchemy
@@ -8,6 +9,7 @@ from fastapi.testclient import TestClient
 from mealie.core.dependencies.dependencies import validate_file_token
 from mealie.schema.recipe.recipe_bulk_actions import ExportTypes
 from mealie.schema.recipe.recipe_category import CategorySave, TagSave
+from mealie.schema.recipe.recipe_settings import RecipeSettings
 from tests import utils
 from tests.utils import api_routes
 from tests.utils.factories import random_string
@@ -155,3 +157,137 @@ def test_bulk_export_recipes(api_client: TestClient, unique_user: TestUser, ten_
 
     response_data = response.json()
     assert len(response_data) == 0
+
+
+def _create_recipe(api_client: TestClient, user: TestUser) -> str:
+    response = api_client.post(api_routes.recipes, json={"name": random_string(length=20)}, headers=user.token)
+    assert response.status_code == 201
+    recipe = user.repos.recipes.get_one(response.json())
+    assert recipe and recipe.id
+    return str(recipe.id)
+
+
+def test_bulk_organize_add_remove_is_atomic_and_idempotent(api_client: TestClient, unique_user: TestUser):
+    recipe_ids = [_create_recipe(api_client, unique_user) for _ in range(2)]
+    tag = unique_user.repos.tags.create(TagSave(group_id=unique_user.group_id, name=random_string()))
+    category = unique_user.repos.categories.create(CategorySave(group_id=unique_user.group_id, name=random_string()))
+    organizer_payload = {
+        "recipes": recipe_ids,
+        "operation": "add",
+        "tags": [tag.model_dump()],
+        "categories": [category.model_dump()],
+    }
+
+    response = api_client.post(
+        api_routes.recipes_bulk_actions_organize,
+        json=utils.jsonify(organizer_payload),
+        headers=unique_user.token,
+    )
+    assert response.status_code == 200
+    assert {item["id"] for item in response.json()} == set(recipe_ids)
+
+    for recipe_id in recipe_ids:
+        recipe = unique_user.repos.recipes.get_one(recipe_id, key="id")
+        assert recipe
+        assert [item.id for item in recipe.tags] == [tag.id]  # type: ignore
+        assert [item.id for item in recipe.recipe_category] == [category.id]  # type: ignore
+
+    response = api_client.post(
+        api_routes.recipes_bulk_actions_organize,
+        json=utils.jsonify(organizer_payload),
+        headers=unique_user.token,
+    )
+    assert response.status_code == 200
+    assert response.json() == []
+
+    response = api_client.post(
+        api_routes.recipes_bulk_actions_organize,
+        json=utils.jsonify({**organizer_payload, "operation": "remove"}),
+        headers=unique_user.token,
+    )
+    assert response.status_code == 200
+    assert {item["id"] for item in response.json()} == set(recipe_ids)
+
+
+def test_bulk_organize_empty_selection_is_a_noop(api_client: TestClient, unique_user: TestUser):
+    recipe_id = _create_recipe(api_client, unique_user)
+    response = api_client.post(
+        api_routes.recipes_bulk_actions_organize,
+        json={"recipes": [recipe_id], "operation": "add", "tags": [], "categories": []},
+        headers=unique_user.token,
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_bulk_organize_invalid_organizer_does_not_change_targets(api_client: TestClient, unique_user: TestUser):
+    recipe_id = _create_recipe(api_client, unique_user)
+    missing_tag_id = uuid4()
+    response = api_client.post(
+        api_routes.recipes_bulk_actions_organize,
+        json={
+            "recipes": [recipe_id],
+            "operation": "add",
+            "tags": [{"id": str(missing_tag_id), "name": "Missing", "slug": "missing"}],
+            "categories": [],
+        },
+        headers=unique_user.token,
+    )
+
+    assert response.status_code == 404
+    recipe = unique_user.repos.recipes.get_one(recipe_id, key="id")
+    assert recipe and not recipe.tags
+
+
+def test_bulk_organize_locked_recipe_rolls_back_prior_targets(api_client: TestClient, user_tuple: list[TestUser]):
+    owner, editor = user_tuple
+    recipe_ids = [_create_recipe(api_client, owner) for _ in range(2)]
+    locked_recipe = owner.repos.recipes.get_one(recipe_ids[1], key="id")
+    assert locked_recipe and locked_recipe.settings
+    locked_recipe.settings = RecipeSettings(locked=True)
+    owner.repos.recipes.update(locked_recipe.slug, locked_recipe)
+    tag = owner.repos.tags.create(TagSave(group_id=owner.group_id, name=random_string()))
+
+    response = api_client.post(
+        api_routes.recipes_bulk_actions_organize,
+        json=utils.jsonify(
+            {
+                "recipes": recipe_ids,
+                "operation": "add",
+                "tags": [tag.model_dump()],
+                "categories": [],
+            }
+        ),
+        headers=editor.token,
+    )
+
+    assert response.status_code == 403
+    for recipe_id in recipe_ids:
+        recipe = owner.repos.recipes.get_one(recipe_id, key="id")
+        assert recipe and not recipe.tags
+
+
+def test_bulk_organize_missing_target_does_not_change_valid_recipe(
+    api_client: TestClient, unique_user: TestUser, g2_user: TestUser
+):
+    recipe_id = _create_recipe(api_client, unique_user)
+    foreign_recipe_id = _create_recipe(api_client, g2_user)
+    tag = unique_user.repos.tags.create(TagSave(group_id=unique_user.group_id, name=random_string()))
+
+    response = api_client.post(
+        api_routes.recipes_bulk_actions_organize,
+        json=utils.jsonify(
+            {
+                "recipes": [recipe_id, foreign_recipe_id],
+                "operation": "add",
+                "tags": [tag.model_dump()],
+                "categories": [],
+            }
+        ),
+        headers=unique_user.token,
+    )
+
+    assert response.status_code == 404
+    recipe = unique_user.repos.recipes.get_one(recipe_id, key="id")
+    assert recipe and not recipe.tags

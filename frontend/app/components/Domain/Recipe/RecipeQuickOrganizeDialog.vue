@@ -63,10 +63,17 @@
 import { alert } from "~/composables/use-toast";
 import { deepCopy } from "~/composables/use-utils";
 import { useUserApi } from "~/composables/api";
-import type { Recipe, RecipeCategory, RecipeTag } from "~/lib/api/types/recipe";
+import type {
+  BulkOrganizeRecipes,
+  CategoryBase,
+  Recipe,
+  RecipeCategory,
+  RecipeSummary,
+  RecipeTag,
+  TagBase,
+} from "~/lib/api/types/recipe";
 import { Organizer } from "~/lib/api/types/non-generated";
 import {
-  buildBulkOrganizerPatches,
   buildSingleOrganizerPatch,
   type OrganizerOperation,
   type RecipeOrganizerSelection,
@@ -85,7 +92,7 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const emit = defineEmits<{
-  saved: [recipes: Recipe[]];
+  saved: [recipes: RecipeSummary[]];
 }>();
 
 const dialog = defineModel<boolean>({ default: false });
@@ -101,7 +108,13 @@ const loading = ref(false);
 
 const isBulk = computed(() => props.mode === "bulk");
 const title = computed(() => isBulk.value ? i18n.t("recipe.organize-recipes") : i18n.t("recipe.organize-recipe"));
-const canSave = computed(() => props.recipes.length > 0 && !loading.value);
+const canSave = computed(() => {
+  if (props.recipes.length === 0 || loading.value) {
+    return false;
+  }
+
+  return !isBulk.value || tags.value.length > 0 || recipeCategory.value.length > 0;
+});
 
 function initialize() {
   operation.value = "add";
@@ -192,21 +205,53 @@ async function saveOne() {
 }
 
 async function saveBulk() {
-  const patches = buildBulkOrganizerPatches(props.recipes, selection.value, operation.value);
-  if (patches.length === 0) {
-    // Empty organizer fields are intentionally a no-op in bulk mode.
+  const recipeIds = props.recipes
+    .map(recipe => recipe.id)
+    .filter((id): id is string => !!id);
+  const tags = toTagBases(selection.value.tags);
+  const categories = toCategoryBases(selection.value.recipeCategory);
+
+  if (recipeIds.length === 0 || (tags.length === 0 && categories.length === 0)) {
     dialog.value = false;
     return;
   }
 
-  const { data, error } = await api.recipes.patchMany(patches as Recipe[]);
+  const payload: BulkOrganizeRecipes = {
+    recipes: recipeIds,
+    operation: operation.value,
+    tags,
+    categories,
+  };
+  const { data, error } = await api.bulk.bulkOrganize(payload);
   if (error || !data) {
     showSaveError();
     return;
   }
 
-  alert.success(i18n.t("recipe.recipe-updated"));
+  if (data.length > 0) {
+    alert.success(i18n.t("recipe.recipe-updated"));
+  }
   dialog.value = false;
   emit("saved", data);
+}
+
+function toTagBases(tags: RecipeTag[]): TagBase[] {
+  return tags.flatMap((tag) => {
+    if (!tag.id) {
+      return [];
+    }
+
+    return [{ id: tag.id, name: tag.name, slug: tag.slug }];
+  });
+}
+
+function toCategoryBases(categories: RecipeCategory[]): CategoryBase[] {
+  return categories.flatMap((category) => {
+    if (!category.id) {
+      return [];
+    }
+
+    return [{ id: category.id, name: category.name, slug: category.slug }];
+  });
 }
 </script>

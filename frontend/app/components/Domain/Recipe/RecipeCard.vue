@@ -7,16 +7,20 @@
     >
       <v-card
         v-bind="hoverProps"
-        :class="{ 'on-hover': isHovering, 'recipe-card--selected': selected }"
+        :class="['recipe-card', { 'on-hover': isHovering, 'recipe-card--selected': selected }]"
         :style="{ cursor }"
         :elevation="isHovering ? 12 : 2"
-        :to="selectMode || showOrganizer ? undefined : recipeRoute"
-        :role="!selectMode && showOrganizer && showRecipeContent ? 'link' : undefined"
-        :tabindex="!selectMode && showOrganizer && showRecipeContent ? 0 : undefined"
+        :tabindex="selectMode ? 0 : undefined"
         :min-height="imageHeight + 75"
         @click="handleCardClick"
-        @keydown.enter.self="navigateToRecipe"
+        @keydown.enter.self="handleSelectionKeydown"
       >
+        <NuxtLink
+          v-if="!selectMode && recipeRoute"
+          :to="recipeRoute"
+          class="recipe-card-link"
+          :aria-label="name"
+        />
         <v-btn
           v-if="selectMode"
           class="recipe-card-selection"
@@ -31,108 +35,113 @@
             {{ selected ? $globals.icons.checkboxMarkedCircle : $globals.icons.checkboxBlankCircleOutline }}
           </v-icon>
         </v-btn>
-        <RecipeCardImage
-          small
-          :icon-size="imageHeight"
-          :height="imageHeight"
-          :slug="slug"
-          :recipe-id="recipeId"
-          :image-version="image"
-        >
-          <v-expand-transition v-if="description">
-            <div
-              v-if="isHovering"
-              class="d-flex transition-fast-in-fast-out bg-secondary v-card--reveal"
-              style="height: 100%"
-            >
-              <v-card-text class="v-card--text-show white--text">
-                <div class="descriptionWrapper">
-                  <SafeMarkdown :source="description" />
-                </div>
-              </v-card-text>
-            </div>
-          </v-expand-transition>
-        </RecipeCardImage>
-        <v-card-title class="mb-n3 px-4" style="font-size: 1.25rem;">
-          {{ name }}
-        </v-card-title>
-
         <div
-          class="recipe-card-footer"
-          :class="{ 'recipe-card-footer--no-tags': tags.length === 0 }"
+          class="recipe-card-content"
+          :class="{ 'recipe-card-content--linked': !selectMode && recipeRoute }"
         >
-          <RecipeChips
-            v-if="tags.length > 0"
-            class="recipe-card-tags px-4"
-            :truncate="false"
-            :items="tags"
-            :title="false"
-            :limit="2"
+          <RecipeCardImage
             small
-            url-prefix="tags"
-            v-bind="$attrs"
-          />
-
-          <slot name="actions">
-            <v-card-actions
-              v-if="showRecipeContent"
-              class="recipe-card-actions px-1 py-0"
-            >
-              <RecipeFavoriteBadge
-                v-if="isOwnGroup"
-                :recipe-id="recipeId"
-                show-always
-              />
-              <div v-else class="px-1" /> <!-- Empty div to keep the layout consistent -->
-
-              <RecipeCardRating
-                :model-value="rating"
-                :recipe-id="recipeId"
-              />
-              <v-spacer />
-              <v-tooltip
-                v-if="showOrganizer && isOwnGroup && showRecipeContent"
-                location="bottom"
-                color="info"
+            :icon-size="imageHeight"
+            :height="imageHeight"
+            :slug="slug"
+            :recipe-id="recipeId"
+            :image-version="image"
+          >
+            <v-expand-transition v-if="description">
+              <div
+                v-if="isHovering"
+                class="d-flex transition-fast-in-fast-out bg-secondary v-card--reveal"
+                style="height: 100%"
               >
-                <template #activator="{ props: tooltipProps }">
-                  <v-btn
-                    icon
-                    variant="text"
-                    size="small"
-                    v-bind="tooltipProps"
-                    :aria-label="$t('settings.organize')"
-                    @click.stop.prevent="$emit('organize')"
-                  >
-                    <v-icon>{{ $globals.icons.organizers }}</v-icon>
-                  </v-btn>
-                </template>
-                <span>{{ $t("settings.organize") }}</span>
-              </v-tooltip>
-              <!-- If we're not logged-in, no items display, so we hide this menu -->
-              <RecipeContextMenu
-                v-if="isOwnGroup && showRecipeContent"
-                color="grey-darken-2"
-                :slug="slug"
-                :menu-icon="$globals.icons.dotsVertical"
-                :name="name"
-                :recipe-id="recipeId"
-                :use-items="{
-                  delete: false,
-                  edit: false,
-                  download: true,
-                  mealplanner: true,
-                  shoppingList: true,
-                  print: false,
-                  printPreferences: false,
-                  share: true,
-                }"
-                @deleted="$emit('delete', slug)"
-              />
-            </v-card-actions>
-          </slot>
+                <v-card-text class="v-card--text-show white--text">
+                  <div class="descriptionWrapper">
+                    <SafeMarkdown :source="description" />
+                  </div>
+                </v-card-text>
+              </div>
+            </v-expand-transition>
+          </RecipeCardImage>
+          <v-card-title class="mb-n3 px-4" style="font-size: 1.25rem;">
+            {{ name }}
+          </v-card-title>
+
+          <div
+            class="recipe-card-footer"
+            :class="{ 'recipe-card-footer--no-tags': tags.length === 0 }"
+          >
+            <RecipeChips
+              v-if="tags.length > 0"
+              class="recipe-card-tags px-4"
+              :truncate="false"
+              :items="tags"
+              :title="false"
+              :limit="2"
+              small
+              url-prefix="tags"
+              v-bind="$attrs"
+            />
+
+            <slot name="actions">
+              <v-card-actions
+                v-if="showRecipeContent"
+                class="recipe-card-actions px-1 py-0"
+              >
+                <RecipeFavoriteBadge
+                  v-if="isOwnGroup"
+                  :recipe-id="recipeId"
+                  show-always
+                />
+                <div v-else class="px-1" /> <!-- Empty div to keep the layout consistent -->
+
+                <RecipeCardRating
+                  :model-value="rating"
+                  :recipe-id="recipeId"
+                />
+                <v-spacer />
+                <v-tooltip
+                  v-if="showOrganizer && !selectMode && isOwnGroup && showRecipeContent"
+                  location="bottom"
+                  color="info"
+                >
+                  <template #activator="{ props: tooltipProps }">
+                    <v-btn
+                      icon
+                      variant="text"
+                      size="small"
+                      v-bind="tooltipProps"
+                      :aria-label="$t('settings.organize')"
+                      @click.stop.prevent="$emit('organize')"
+                    >
+                      <v-icon>{{ $globals.icons.organizers }}</v-icon>
+                    </v-btn>
+                  </template>
+                  <span>{{ $t("settings.organize") }}</span>
+                </v-tooltip>
+                <!-- If we're not logged-in, no items display, so we hide this menu -->
+                <RecipeContextMenu
+                  v-if="isOwnGroup && showRecipeContent"
+                  color="grey-darken-2"
+                  :slug="slug"
+                  :menu-icon="$globals.icons.dotsVertical"
+                  :name="name"
+                  :recipe-id="recipeId"
+                  :use-items="{
+                    delete: false,
+                    edit: false,
+                    download: true,
+                    mealplanner: true,
+                    shoppingList: true,
+                    print: false,
+                    printPreferences: false,
+                    share: true,
+                  }"
+                  @deleted="$emit('delete', slug)"
+                />
+              </v-card-actions>
+            </slot>
+          </div>
+          <slot />
         </div>
-        <slot />
       </v-card>
     </v-hover>
   </div>
@@ -179,7 +188,6 @@ const emit = defineEmits<{
 }>();
 
 const auth = useMealieAuth();
-const router = useRouter();
 const { isOwnGroup } = useLoggedInState();
 
 const route = useRoute();
@@ -192,28 +200,56 @@ const cursor = computed(() => props.selectMode || showRecipeContent.value ? "poi
 
 function handleCardClick(event: MouseEvent) {
   if (props.selectMode) {
+    if (event.target instanceof Element && event.target.closest("button, a, input, select, textarea, [role='button']")) {
+      return;
+    }
+
     event.preventDefault();
     emit("click");
     return;
   }
 
+  // Normal-mode navigation is provided by the native NuxtLink layer.
   if (event.defaultPrevented || (event.target instanceof Element && event.target.closest("button, a, input, select, textarea, [role='button']"))) {
     return;
   }
-
-  if (props.showOrganizer && recipeRoute.value) {
-    navigateToRecipe();
-  }
 }
 
-function navigateToRecipe() {
-  if (!props.selectMode && recipeRoute.value) {
-    void router.push(recipeRoute.value);
+function handleSelectionKeydown(event: KeyboardEvent) {
+  if (props.selectMode) {
+    event.preventDefault();
+    emit("click");
   }
 }
 </script>
 
 <style>
+.recipe-card {
+  position: relative;
+}
+.recipe-card-link {
+  border-radius: inherit;
+  inset: 0;
+  position: absolute;
+  z-index: 0;
+}
+.recipe-card-link:focus-visible {
+  outline: 3px solid rgb(var(--v-theme-info));
+  outline-offset: 2px;
+}
+.recipe-card-content {
+  position: relative;
+  z-index: 1;
+}
+.recipe-card-content--linked {
+  pointer-events: none;
+}
+.recipe-card-content--linked .recipe-card-actions,
+.recipe-card-content--linked .recipe-card-tags {
+  pointer-events: auto;
+  position: relative;
+  z-index: 2;
+}
 .v-card--reveal {
   align-items: center;
   bottom: 0;
