@@ -231,20 +231,16 @@ const selectionLabel = computed(() => i18n.t(
 ));
 
 function handleCardClick(event: MouseEvent) {
-  if (props.selectMode) {
-    if (event.target instanceof Element && event.target.closest("button, a, input, select, textarea, [role='button']")) {
-      return;
-    }
-
-    event.preventDefault();
-    emit("selected");
+  if (!props.selectMode) {
     return;
   }
 
-  // Normal-mode navigation is provided by the native NuxtLink layer.
-  if (event.defaultPrevented || (event.target instanceof Element && event.target.closest("button, a, input, select, textarea, [role='button']"))) {
+  if (event.target instanceof Element && event.target.closest("button, a, input, select, textarea, [role='button']")) {
     return;
   }
+
+  event.preventDefault();
+  emit("selected");
 }
 </script>
 

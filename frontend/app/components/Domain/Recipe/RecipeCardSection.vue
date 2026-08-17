@@ -393,7 +393,6 @@ async function selectAllResults() {
   }
 
   const generation = ++selectAllGeneration;
-  const querySnapshot = stableSerialize(props.query);
   const searchQuery = { ...(props.query ?? {}) };
   selectAllLoading.value = true;
   try {
@@ -403,7 +402,7 @@ async function selectAllResults() {
       perPage: -1,
     });
 
-    if (!isCurrentSelectAllRequest(generation, querySnapshot)) {
+    if (!isCurrentSelectAllRequest(generation)) {
       return;
     }
 
@@ -415,7 +414,7 @@ async function selectAllResults() {
     selectedRecipes.value = data.items.filter(recipe => !!recipeKey(recipe));
   }
   catch (error) {
-    if (!isCurrentSelectAllRequest(generation, querySnapshot)) {
+    if (!isCurrentSelectAllRequest(generation)) {
       return;
     }
 
@@ -429,26 +428,9 @@ async function selectAllResults() {
   }
 }
 
-function isCurrentSelectAllRequest(generation: number, querySnapshot: string): boolean {
+function isCurrentSelectAllRequest(generation: number): boolean {
   return generation === selectAllGeneration
-    && selectionMode.value
-    && stableSerialize(props.query) === querySnapshot;
-}
-
-function stableSerialize(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map(item => stableSerialize(item)).join(",")}]`;
-  }
-
-  if (value !== null && typeof value === "object") {
-    return `{${Object.entries(value as Record<string, unknown>)
-      .filter(([, item]) => item !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, item]) => `${JSON.stringify(key)}:${stableSerialize(item)}`)
-      .join(",")}}`;
-  }
-
-  return JSON.stringify(value) ?? "undefined";
+    && selectionMode.value;
 }
 
 function openSingleOrganizer(recipe: Recipe) {
@@ -482,10 +464,6 @@ watch(
   },
   { deep: true },
 );
-
-onUnmounted(() => {
-  invalidateSelectAll();
-});
 
 const queryFilter = computed(() => {
   return props.query?.queryFilter || null;

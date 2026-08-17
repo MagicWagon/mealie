@@ -2,13 +2,11 @@ from collections import defaultdict
 from functools import cached_property
 from pathlib import Path
 
-import sqlalchemy
 from fastapi import APIRouter, HTTPException, status
 from pydantic import UUID4
 
-from mealie.core import exceptions
 from mealie.core.dependencies.dependencies import get_temporary_zip_path
-from mealie.core.exceptions import PermissionDenied
+from mealie.core.exceptions import NoEntryFound, PermissionDenied
 from mealie.core.security import create_file_token
 from mealie.routes._base import BaseCrudController, controller
 from mealie.schema.group.group_exports import GroupDataExport
@@ -43,21 +41,15 @@ class RecipeBulkActionsController(BaseCrudController):
     def bulk_organize_recipes(self, organize_data: BulkOrganizeRecipes):
         try:
             updated_recipes = self.service.organize_recipes(organize_data)
-        except exceptions.PermissionDenied as e:
+        except PermissionDenied as e:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=ErrorResponse.respond(message="Permission Denied"),
             ) from e
-        except exceptions.NoEntryFound as e:
+        except NoEntryFound as e:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=ErrorResponse.respond(message="No Entry Found"),
-            ) from e
-        except sqlalchemy.exc.SQLAlchemyError as e:
-            self.logger.exception("Database error during bulk recipe organization")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=ErrorResponse.respond(message="Unknown Error", exception=e.__class__.__name__),
             ) from e
         except Exception as e:
             self.logger.exception("Unknown error during bulk recipe organization")

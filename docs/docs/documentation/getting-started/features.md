@@ -58,15 +58,13 @@ Tags are nearly identical to categories in function but play a secondary role in
 
 Tools are another way that some users like to organize their recipes. If a recipe requires some specific equipment, it can be helpful to assign tools to the recipes. This is particularly useful for things that are less common, like a pressure cooker or a sous vide.
 
+[Tools Demo](https://demo.mealie.io/g/home/recipes/tools){ .md-button .md-button--primary }
+
 Each of the above organizers can be filtered in searches and have their own pages where you can view all the recipes that are associated with those organizers.
 
 #### Bulk Organization
 
-You can organize multiple recipes at once from recipe cards and search results. Select the recipes you want to update, or select all recipes returned by the current search, then choose **Organize Recipes**. You can add or remove any combination of tags and categories in one operation. Recipes that already have a tag or category being added, or do not have one being removed, are left unchanged.
-
-This is useful for applying an organizer to a group of search results without opening each recipe individually. Integrations can perform the same operation through the [`POST /api/recipes/bulk-actions/organize` API](../../contributors/developers-guide/migration-guide.md#bulk-recipe-organization).
-
-[Tools Demo](https://demo.mealie.io/g/home/recipes/tools){ .md-button .md-button--primary }
+You can organize multiple recipes at once from recipe cards and search results. Select the recipes you want to update, or select all recipes returned by the current search, then choose **Organize Recipes** to add or remove tags and categories. Integrations can use the [`POST /api/recipes/bulk-actions/organize` endpoint](https://demo.mealie.io/docs#/Recipe%3A%20Bulk%20Actions/bulk_organize_recipes).
 
 #### Cookbooks
 
@@ -191,7 +189,6 @@ Managing a robust collection of recipes inevitable requires a lot of data. Meali
         - Export
         - Tag
         - Categorize
-        - Organize (add or remove tags and categories)
         - Delete
 - Foods
     - Import/Seed your database with a collection of over 200 foods!

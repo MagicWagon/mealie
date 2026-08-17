@@ -5,11 +5,7 @@
     :title="title"
     :icon="$globals.icons.organizers"
     :loading="loading"
-    keep-open
-    can-submit
     disable-submit-on-enter
-    :submit-disabled="loading || !canSave"
-    @submit="save"
     @cancel="cancel"
   >
     <v-card-text>
@@ -71,13 +67,9 @@ import type {
   RecipeSummary,
   RecipeTag,
   TagBase,
+  OrganizerOperation,
 } from "~/lib/api/types/recipe";
 import { Organizer } from "~/lib/api/types/non-generated";
-import {
-  buildSingleOrganizerPatch,
-  type OrganizerOperation,
-  type RecipeOrganizerSelection,
-} from "./recipe-organizer-transform";
 
 type OrganizerDialogMode = "single" | "bulk";
 
@@ -145,11 +137,6 @@ watch(
   },
 );
 
-const selection = computed<RecipeOrganizerSelection>(() => ({
-  tags: tags.value,
-  recipeCategory: recipeCategory.value,
-}));
-
 function cancel() {
   if (!loading.value) {
     dialog.value = false;
@@ -192,7 +179,10 @@ async function saveOne() {
     return;
   }
 
-  const patch = buildSingleOrganizerPatch(selection.value);
+  const patch = {
+    tags: tags.value,
+    recipeCategory: recipeCategory.value,
+  };
   const { data, error } = await api.recipes.patchOne(recipeSlug, patch);
   if (error || !data) {
     showSaveError();
@@ -208,23 +198,23 @@ async function saveBulk() {
   const recipeIds = props.recipes
     .map(recipe => recipe.id)
     .filter((id): id is string => !!id);
-  const tags = toTagBases(selection.value.tags);
-  const categories = toCategoryBases(selection.value.recipeCategory);
+  const selectedTags = toTagBases(tags.value);
+  const selectedCategories = toCategoryBases(recipeCategory.value);
 
   if (recipeIds.length !== props.recipes.length) {
     showSaveError();
     return;
   }
 
-  if (recipeIds.length === 0 || (tags.length === 0 && categories.length === 0)) {
+  if (recipeIds.length === 0 || (selectedTags.length === 0 && selectedCategories.length === 0)) {
     return;
   }
 
   const payload: BulkOrganizeRecipes = {
     recipes: recipeIds,
     operation: operation.value,
-    tags,
-    categories,
+    tags: selectedTags,
+    categories: selectedCategories,
   };
   const { data, error } = await api.bulk.bulkOrganize(payload);
   if (error || !data) {

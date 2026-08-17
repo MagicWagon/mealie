@@ -260,65 +260,6 @@ describe("RecipeCardSection selection requests", () => {
     expect(wrapper.text()).not.toContain("Selected: 1");
   });
 
-  it("does not update state when Select All resolves after unmount", async () => {
-    const recipe = { id: "recipe-a", slug: "recipe-a" };
-    const request = deferred<{ data: { items: typeof recipe[] }; error: null }>();
-    api.recipes.search.mockReturnValueOnce(request.promise);
-    const wrapper = mountSection();
-    await flushPromises();
-
-    await buttonByText(wrapper, "Select")!.trigger("click");
-    await buttonByText(wrapper, "Select All Results")!.trigger("click");
-    wrapper.unmount();
-
-    request.resolve({ data: { items: [recipe] }, error: null });
-    await flushPromises();
-
-    expect(alert.error).not.toHaveBeenCalled();
-  });
-
-  it("ignores a stale Select All rejection", async () => {
-    const request = deferred<{ data: { items: never[] }; error: null }>();
-    api.recipes.search.mockReturnValueOnce(request.promise);
-    const wrapper = mountSection({ search: "a" });
-    await flushPromises();
-
-    await buttonByText(wrapper, "Select")!.trigger("click");
-    await buttonByText(wrapper, "Select All Results")!.trigger("click");
-    await wrapper.setProps({ query: { search: "b" } });
-
-    request.reject(new Error("stale request"));
-    await flushPromises();
-
-    expect(alert.error).not.toHaveBeenCalled();
-    expect(wrapper.text()).toContain("Selected: 0");
-  });
-
-  it("shows an error for the current Select All failure and remains usable", async () => {
-    const request = deferred<{ data: { items: never[] }; error: null }>();
-    api.recipes.search.mockReturnValueOnce(request.promise);
-    const wrapper = mountSection();
-    await flushPromises();
-
-    await buttonByText(wrapper, "Select")!.trigger("click");
-    await buttonByText(wrapper, "Select All Results")!.trigger("click");
-    request.reject(new Error("current request"));
-    await flushPromises();
-
-    expect(alert.error).toHaveBeenCalledTimes(1);
-    expect(buttonByText(wrapper, "Exit Selection")).toBeDefined();
-    expect(buttonByText(wrapper, "Select All Results")?.attributes("data-loading")).toBeUndefined();
-
-    const recipe = { id: "recipe-b", slug: "recipe-b" };
-    const nextRequest = deferred<{ data: { items: typeof recipe[] }; error: null }>();
-    api.recipes.search.mockReturnValueOnce(nextRequest.promise);
-    await buttonByText(wrapper, "Select All Results")!.trigger("click");
-    nextRequest.resolve({ data: { items: [recipe] }, error: null });
-    await flushPromises();
-
-    expect(wrapper.text()).toContain("Selected: 1");
-  });
-
   it("selects every recipe returned for the current query", async () => {
     const recipeA = { id: "recipe-a", slug: "recipe-a" };
     const recipeB = { id: "recipe-b", slug: "recipe-b" };

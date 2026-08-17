@@ -5,7 +5,6 @@ from uuid import uuid4
 import pytest
 import sqlalchemy
 from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
 
 from mealie.core.dependencies.dependencies import validate_file_token
 from mealie.schema.recipe.recipe_bulk_actions import ExportTypes
@@ -478,49 +477,3 @@ def test_bulk_organize_events_only_publish_for_changed_batches(
 
     assert response.status_code == 404
     assert dispatched_events == []
-
-
-def test_bulk_organize_database_failure_rolls_back_and_emits_no_event(
-    api_client: TestClient, unique_user: TestUser, monkeypatch: pytest.MonkeyPatch
-):
-    recipe_ids = [_create_recipe(api_client, unique_user) for _ in range(2)]
-    tag = unique_user.repos.tags.create(TagSave(group_id=unique_user.group_id, name=random_string()))
-    dispatched_events = []
-
-    def capture_dispatch(_service: EventBusService, **kwargs):
-        dispatched_events.append(kwargs)
-
-    original_commit = Session.commit
-    commit_calls = 0
-
-    def fail_commit(session: Session):
-        nonlocal commit_calls
-        commit_calls += 1
-        if commit_calls == 1:
-            original_commit(session)
-            return
-
-        raise sqlalchemy.exc.SQLAlchemyError("forced commit failure")
-
-    monkeypatch.setattr(EventBusService, "dispatch", capture_dispatch)
-    monkeypatch.setattr(Session, "commit", fail_commit)
-
-    response = api_client.post(
-        api_routes.recipes_bulk_actions_organize,
-        json=utils.jsonify(
-            {
-                "recipes": recipe_ids,
-                "operation": "add",
-                "tags": [tag.model_dump()],
-                "categories": [],
-            }
-        ),
-        headers=unique_user.token,
-    )
-
-    assert response.status_code == 500
-    assert commit_calls >= 2
-    assert dispatched_events == []
-    for recipe_id in recipe_ids:
-        recipe = unique_user.repos.recipes.get_one(recipe_id, key="id")
-        assert recipe and not recipe.tags

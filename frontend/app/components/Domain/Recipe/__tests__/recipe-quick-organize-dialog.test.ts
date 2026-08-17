@@ -85,22 +85,49 @@ describe("RecipeQuickOrganizeDialog", () => {
     vi.stubGlobal("useNuxtApp", () => ({ $globals: { icons: { organizers: "organizers" } } }));
   });
 
-  it("sends selected IDs and the add operation to the atomic bulk API", async () => {
+  it.each([
+    {
+      operation: "add" as const,
+      selectedOrganizers: ["tags", "categories"],
+      tags: [tag],
+      categories: [category],
+      returnedRecipe: recipe,
+    },
+    {
+      operation: "remove" as const,
+      selectedOrganizers: ["tags"],
+      tags: [tag],
+      categories: [],
+      returnedRecipe: { ...recipe, tags: [tag] },
+    },
+  ])("sends selected IDs and the $operation operation to the atomic bulk API", async ({
+    operation,
+    selectedOrganizers,
+    tags,
+    categories,
+    returnedRecipe,
+  }) => {
+    api.bulk.bulkOrganize.mockResolvedValue({ data: [returnedRecipe], error: null });
     const wrapper = mountDialog({ modelValue: true, mode: "bulk", recipes: [recipe, { ...recipe, id: "recipe-2" }] });
 
-    await wrapper.get("[data-selector=\"tags\"]").trigger("click");
-    await wrapper.get("[data-selector=\"categories\"]").trigger("click");
+    for (const selectorType of selectedOrganizers) {
+      await wrapper.get(`[data-selector="${selectorType}"]`).trigger("click");
+    }
+    if (operation === "remove") {
+      await wrapper.get("button[data-operation='remove']").trigger("click");
+    }
     await wrapper.find("button[data-save]").trigger("click");
     await flushPromises();
 
     expect(api.bulk.bulkOrganize).toHaveBeenCalledWith({
       recipes: ["recipe-1", "recipe-2"],
-      operation: "add",
-      tags: [tag],
-      categories: [category],
+      operation,
+      tags,
+      categories,
     });
     expect(wrapper.emitted("saved")).toHaveLength(1);
-    expect(wrapper.emitted("update:modelValue")).toContainEqual([false]);
+    expect(wrapper.emitted("saved")![0][0][0]).toBe(returnedRecipe);
+    expect(wrapper.emitted("update:modelValue")).toEqual([[false]]);
   });
 
   it("sends remove and keeps the dialog open when bulk organization fails", async () => {
@@ -121,27 +148,6 @@ describe("RecipeQuickOrganizeDialog", () => {
     expect(wrapper.emitted("saved")).toBeUndefined();
     expect(wrapper.emitted("update:modelValue")).toBeUndefined();
     expect(alert.error).toHaveBeenCalled();
-  });
-
-  it("sends a successful bulk remove and forwards the returned recipes unchanged", async () => {
-    const returnedRecipe = { ...recipe, tags: [tag] };
-    api.bulk.bulkOrganize.mockResolvedValue({ data: [returnedRecipe], error: null });
-    const wrapper = mountDialog({ modelValue: true, mode: "bulk", recipes: [recipe] });
-
-    await wrapper.get("[data-selector=\"tags\"]").trigger("click");
-    await wrapper.get("button[data-operation='remove']").trigger("click");
-    await wrapper.find("button[data-save]").trigger("click");
-    await flushPromises();
-
-    expect(api.bulk.bulkOrganize).toHaveBeenCalledWith({
-      recipes: ["recipe-1"],
-      operation: "remove",
-      tags: [tag],
-      categories: [],
-    });
-    expect(wrapper.emitted("saved")).toHaveLength(1);
-    expect(wrapper.emitted("saved")![0][0][0]).toBe(returnedRecipe);
-    expect(wrapper.emitted("update:modelValue")).toEqual([[false]]);
   });
 
   it("saves both organizer fields for a single recipe", async () => {
