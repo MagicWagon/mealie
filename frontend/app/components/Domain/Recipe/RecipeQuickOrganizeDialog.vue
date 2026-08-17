@@ -113,7 +113,7 @@ const canSave = computed(() => {
     return false;
   }
 
-  return !isBulk.value || tags.value.length > 0 || recipeCategory.value.length > 0;
+  return !isBulk.value || toTagBases(tags.value).length > 0 || toCategoryBases(recipeCategory.value).length > 0;
 });
 
 function initialize() {
@@ -211,8 +211,12 @@ async function saveBulk() {
   const tags = toTagBases(selection.value.tags);
   const categories = toCategoryBases(selection.value.recipeCategory);
 
+  if (recipeIds.length !== props.recipes.length) {
+    showSaveError();
+    return;
+  }
+
   if (recipeIds.length === 0 || (tags.length === 0 && categories.length === 0)) {
-    dialog.value = false;
     return;
   }
 

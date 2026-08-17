@@ -32,7 +32,7 @@ import RecipeExplorerPageSearch from "./RecipeExplorerPageParts/RecipeExplorerPa
 import { useLoggedInState } from "~/composables/use-logged-in-state";
 import RecipeCardSection from "~/components/Domain/Recipe/RecipeCardSection.vue";
 import { useLazyRecipes } from "~/composables/recipes";
-import type { Recipe } from "~/lib/api/types/recipe";
+import type { RecipeSummary } from "~/lib/api/types/recipe";
 
 const auth = useMealieAuth();
 const route = useRoute();
@@ -57,7 +57,7 @@ function onItemSelected(item: any, urlPrefix: string) {
   searchComponent.value?.filterItems(item, urlPrefix);
 }
 
-function mergeUpdatedRecipes(updatedRecipes: Recipe[]) {
+function mergeUpdatedRecipes(updatedRecipes: RecipeSummary[]) {
   const updatedByKey = new Map(
     updatedRecipes
       .map(recipe => [recipe.id || recipe.slug, recipe] as const)

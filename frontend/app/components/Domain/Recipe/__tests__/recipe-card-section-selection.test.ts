@@ -47,7 +47,7 @@ const stubs = {
     inheritAttrs: false,
     emits: ["click"],
     props: ["disabled", "loading"],
-    template: "<button :disabled='disabled' @click='$emit(\"click\")'><slot /></button>",
+    template: "<button :disabled='disabled' :data-loading='loading ? true : undefined' @click='$emit(\"click\")'><slot /></button>",
   },
   VMenu: {
     template: "<div><slot name='activator' :props='{}' /><slot /></div>",
@@ -62,10 +62,12 @@ const stubs = {
     template: "<div data-view-toggle />",
   },
   RecipeCard: {
-    template: "<div />",
+    emits: ["click"],
+    template: "<button data-recipe-card @click='$emit(\"click\")' />",
   },
   RecipeCardMobile: {
-    template: "<div />",
+    emits: ["selected"],
+    template: "<button data-recipe-card @click='$emit(\"selected\")' />",
   },
   RecipeQuickOrganizeDialog: {
     template: "<div />",
@@ -202,9 +204,134 @@ describe("RecipeCardSection selection requests", () => {
     requestA.resolve({ data: { items: [recipeA] }, error: null });
     await flushPromises();
     expect(wrapper.text()).toContain("0");
+    expect(buttonByText(wrapper, "Select All Results")?.attributes("data-loading")).toBe("true");
 
     requestB.resolve({ data: { items: [recipeB] }, error: null });
     await flushPromises();
     expect(wrapper.text()).toContain("1");
+    expect(buttonByText(wrapper, "Select All Results")?.attributes("data-loading")).toBeUndefined();
+  });
+
+  it("clears loaded selections immediately when the active query changes", async () => {
+    const wrapper = mountSection({ search: "a" });
+    await flushPromises();
+
+    await buttonByText(wrapper, "Select")!.trigger("click");
+    await wrapper.get("[data-recipe-card]").trigger("click");
+    expect(wrapper.text()).toContain("Selected: 1");
+
+    await wrapper.setProps({ query: { search: "b" } });
+
+    expect(wrapper.text()).toContain("Selected: 0");
+  });
+
+  it("keeps selection mode for Clear and restores normal mode on Exit", async () => {
+    const wrapper = mountSection();
+    await flushPromises();
+
+    await buttonByText(wrapper, "Select")!.trigger("click");
+    await wrapper.get("[data-recipe-card]").trigger("click");
+    await buttonByText(wrapper, "Clear")!.trigger("click");
+
+    expect(wrapper.text()).toContain("Selected: 0");
+    expect(buttonByText(wrapper, "Exit Selection")).toBeDefined();
+
+    await buttonByText(wrapper, "Exit Selection")!.trigger("click");
+
+    expect(buttonByText(wrapper, "Select")).toBeDefined();
+    expect(wrapper.text()).not.toContain("Exit Selection");
+  });
+
+  it("does not apply a pending Select All response after selection mode is exited", async () => {
+    const recipe = { id: "recipe-a", slug: "recipe-a" };
+    const request = deferred<{ data: { items: typeof recipe[] }; error: null }>();
+    api.recipes.search.mockReturnValueOnce(request.promise);
+    const wrapper = mountSection();
+    await flushPromises();
+
+    await buttonByText(wrapper, "Select")!.trigger("click");
+    await buttonByText(wrapper, "Select All Results")!.trigger("click");
+    await buttonByText(wrapper, "Exit Selection")!.trigger("click");
+
+    request.resolve({ data: { items: [recipe] }, error: null });
+    await flushPromises();
+
+    expect(alert.error).not.toHaveBeenCalled();
+    expect(wrapper.text()).not.toContain("Selected: 1");
+  });
+
+  it("does not update state when Select All resolves after unmount", async () => {
+    const recipe = { id: "recipe-a", slug: "recipe-a" };
+    const request = deferred<{ data: { items: typeof recipe[] }; error: null }>();
+    api.recipes.search.mockReturnValueOnce(request.promise);
+    const wrapper = mountSection();
+    await flushPromises();
+
+    await buttonByText(wrapper, "Select")!.trigger("click");
+    await buttonByText(wrapper, "Select All Results")!.trigger("click");
+    wrapper.unmount();
+
+    request.resolve({ data: { items: [recipe] }, error: null });
+    await flushPromises();
+
+    expect(alert.error).not.toHaveBeenCalled();
+  });
+
+  it("ignores a stale Select All rejection", async () => {
+    const request = deferred<{ data: { items: never[] }; error: null }>();
+    api.recipes.search.mockReturnValueOnce(request.promise);
+    const wrapper = mountSection({ search: "a" });
+    await flushPromises();
+
+    await buttonByText(wrapper, "Select")!.trigger("click");
+    await buttonByText(wrapper, "Select All Results")!.trigger("click");
+    await wrapper.setProps({ query: { search: "b" } });
+
+    request.reject(new Error("stale request"));
+    await flushPromises();
+
+    expect(alert.error).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain("Selected: 0");
+  });
+
+  it("shows an error for the current Select All failure and remains usable", async () => {
+    const request = deferred<{ data: { items: never[] }; error: null }>();
+    api.recipes.search.mockReturnValueOnce(request.promise);
+    const wrapper = mountSection();
+    await flushPromises();
+
+    await buttonByText(wrapper, "Select")!.trigger("click");
+    await buttonByText(wrapper, "Select All Results")!.trigger("click");
+    request.reject(new Error("current request"));
+    await flushPromises();
+
+    expect(alert.error).toHaveBeenCalledTimes(1);
+    expect(buttonByText(wrapper, "Exit Selection")).toBeDefined();
+    expect(buttonByText(wrapper, "Select All Results")?.attributes("data-loading")).toBeUndefined();
+
+    const recipe = { id: "recipe-b", slug: "recipe-b" };
+    const nextRequest = deferred<{ data: { items: typeof recipe[] }; error: null }>();
+    api.recipes.search.mockReturnValueOnce(nextRequest.promise);
+    await buttonByText(wrapper, "Select All Results")!.trigger("click");
+    nextRequest.resolve({ data: { items: [recipe] }, error: null });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("Selected: 1");
+  });
+
+  it("selects every recipe returned for the current query", async () => {
+    const recipeA = { id: "recipe-a", slug: "recipe-a" };
+    const recipeB = { id: "recipe-b", slug: "recipe-b" };
+    const request = deferred<{ data: { items: typeof recipeA[] }; error: null }>();
+    api.recipes.search.mockReturnValueOnce(request.promise);
+    const wrapper = mountSection({ search: "recipes" });
+    await flushPromises();
+
+    await buttonByText(wrapper, "Select")!.trigger("click");
+    await buttonByText(wrapper, "Select All Results")!.trigger("click");
+    request.resolve({ data: { items: [recipeA, recipeB] }, error: null });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("Selected: 2");
   });
 });

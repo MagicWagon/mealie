@@ -11,9 +11,7 @@
         :style="{ cursor }"
         hover
         height="100%"
-        :tabindex="selectMode ? 0 : undefined"
         @click="handleCardClick"
-        @keydown.enter.self="handleSelectionKeydown"
       >
         <NuxtLink
           v-if="!selectMode && recipeRoute"
@@ -28,7 +26,8 @@
           size="small"
           variant="flat"
           color="info"
-          :aria-label="$t('general.select')"
+          :aria-label="selectionLabel"
+          :aria-pressed="selected"
           @click.stop="$emit('selected')"
         >
           <v-icon>
@@ -217,6 +216,7 @@ const emit = defineEmits<{
 
 const auth = useMealieAuth();
 const { isOwnGroup } = useLoggedInState();
+const i18n = useI18n();
 
 const route = useRoute();
 const groupSlug = computed(() => route.params.groupSlug || auth.user.value?.groupSlug || "");
@@ -225,6 +225,10 @@ const recipeRoute = computed<string>(() => {
   return showRecipeContent.value ? `/g/${groupSlug.value}/r/${props.slug}` : "";
 });
 const cursor = computed(() => props.selectMode || showRecipeContent.value ? "pointer" : "auto");
+const selectionLabel = computed(() => i18n.t(
+  props.selected ? "recipe.deselect-recipe" : "recipe.select-recipe",
+  { name: props.name },
+));
 
 function handleCardClick(event: MouseEvent) {
   if (props.selectMode) {
@@ -240,13 +244,6 @@ function handleCardClick(event: MouseEvent) {
   // Normal-mode navigation is provided by the native NuxtLink layer.
   if (event.defaultPrevented || (event.target instanceof Element && event.target.closest("button, a, input, select, textarea, [role='button']"))) {
     return;
-  }
-}
-
-function handleSelectionKeydown(event: KeyboardEvent) {
-  if (props.selectMode) {
-    event.preventDefault();
-    emit("selected");
   }
 }
 </script>

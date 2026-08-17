@@ -45,16 +45,22 @@ const stubs = {
       loading: Boolean,
       save: Boolean,
     },
-    template: "<button :data-save='save ? true : undefined' :disabled='disabled' @click='$emit(\"click\")'><slot /></button>",
+    template: "<button :data-save='save ? true : undefined' :data-cancel='cancel ? true : undefined' :disabled='disabled' @click='$emit(\"click\")'><slot /></button>",
   },
   RecipeOrganizerSelector: {
     props: ["modelValue", "selectorType"],
     setup() {
       return { category, tag };
     },
-    template: "<button :data-selector='selectorType' @click='$emit(\"update:modelValue\", selectorType === \"tags\" ? [tag] : [category])'>select</button>",
+    template: `
+      <div>
+        <button :data-selector='selectorType' @click='$emit("update:modelValue", selectorType === "tags" ? [tag] : [category])'>select</button>
+        <button :data-clear='selectorType' @click='$emit("update:modelValue", [])'>clear</button>
+      </div>
+    `,
   },
   VRadioGroup: {
+    emits: ["update:modelValue"],
     template: "<div><slot /><button data-operation='remove' @click='$emit(\"update:modelValue\", \"remove\")'>remove</button></div>",
   },
 };
@@ -115,6 +121,111 @@ describe("RecipeQuickOrganizeDialog", () => {
     expect(wrapper.emitted("saved")).toBeUndefined();
     expect(wrapper.emitted("update:modelValue")).toBeUndefined();
     expect(alert.error).toHaveBeenCalled();
+  });
+
+  it("sends a successful bulk remove and forwards the returned recipes unchanged", async () => {
+    const returnedRecipe = { ...recipe, tags: [tag] };
+    api.bulk.bulkOrganize.mockResolvedValue({ data: [returnedRecipe], error: null });
+    const wrapper = mountDialog({ modelValue: true, mode: "bulk", recipes: [recipe] });
+
+    await wrapper.get("[data-selector=\"tags\"]").trigger("click");
+    await wrapper.get("button[data-operation='remove']").trigger("click");
+    await wrapper.find("button[data-save]").trigger("click");
+    await flushPromises();
+
+    expect(api.bulk.bulkOrganize).toHaveBeenCalledWith({
+      recipes: ["recipe-1"],
+      operation: "remove",
+      tags: [tag],
+      categories: [],
+    });
+    expect(wrapper.emitted("saved")).toHaveLength(1);
+    expect(wrapper.emitted("saved")![0][0][0]).toBe(returnedRecipe);
+    expect(wrapper.emitted("update:modelValue")).toEqual([[false]]);
+  });
+
+  it("saves both organizer fields for a single recipe", async () => {
+    const returnedRecipe = { ...recipe, tags: [tag], recipeCategory: [category] };
+    api.recipes.patchOne.mockResolvedValue({ data: returnedRecipe, error: null });
+    const wrapper = mountDialog({ modelValue: true, recipes: [recipe] });
+
+    await wrapper.get("[data-selector=\"tags\"]").trigger("click");
+    await wrapper.get("[data-selector=\"categories\"]").trigger("click");
+    await wrapper.find("button[data-save]").trigger("click");
+    await flushPromises();
+
+    expect(api.recipes.patchOne).toHaveBeenCalledWith("recipe-1", {
+      tags: [tag],
+      recipeCategory: [category],
+    });
+    expect(wrapper.emitted("saved")).toEqual([[[returnedRecipe]]]);
+    expect(wrapper.emitted("update:modelValue")).toEqual([[false]]);
+  });
+
+  it("can clear all organizers in a single recipe without mutating the input", async () => {
+    const existingRecipe = { ...recipe, tags: [tag], recipeCategory: [category] };
+    api.recipes.patchOne.mockResolvedValue({ data: existingRecipe, error: null });
+    const wrapper = mountDialog({ modelValue: false, recipes: [existingRecipe] });
+    await wrapper.setProps({ modelValue: true });
+
+    await wrapper.get("button[data-clear='tags']").trigger("click");
+    await wrapper.get("button[data-clear='categories']").trigger("click");
+    await wrapper.find("button[data-save]").trigger("click");
+    await flushPromises();
+
+    expect(api.recipes.patchOne).toHaveBeenCalledWith("recipe-1", {
+      tags: [],
+      recipeCategory: [],
+    });
+    expect(existingRecipe.tags).toEqual([tag]);
+    expect(existingRecipe.recipeCategory).toEqual([category]);
+  });
+
+  it("cancels a single-recipe edit without mutating the input recipe", async () => {
+    const existingRecipe = { ...recipe, tags: [tag], recipeCategory: [category] };
+    const wrapper = mountDialog({ modelValue: false, recipes: [existingRecipe] });
+    await wrapper.setProps({ modelValue: true });
+
+    await wrapper.get("[data-selector=\"tags\"]").trigger("click");
+    await wrapper.get("button[data-cancel]").trigger("click");
+
+    expect(existingRecipe.tags).toEqual([tag]);
+    expect(existingRecipe.recipeCategory).toEqual([category]);
+    expect(wrapper.emitted("saved")).toBeUndefined();
+    expect(wrapper.emitted("update:modelValue")).toEqual([[false]]);
+  });
+
+  it("keeps a single-recipe dialog open and emits nothing when save fails", async () => {
+    api.recipes.patchOne.mockResolvedValue({ data: null, error: new Error("failed") });
+    const wrapper = mountDialog({ modelValue: true, recipes: [recipe] });
+
+    await wrapper.get("[data-selector=\"tags\"]").trigger("click");
+    await wrapper.find("button[data-save]").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.emitted("saved")).toBeUndefined();
+    expect(wrapper.emitted("update:modelValue")).toBeUndefined();
+    expect(alert.error).toHaveBeenCalled();
+  });
+
+  it("does not submit bulk organization twice while the first request is pending", async () => {
+    let resolveRequest!: (value: { data: typeof recipe[]; error: null }) => void;
+    const request = new Promise<{ data: typeof recipe[]; error: null }>((resolve) => {
+      resolveRequest = resolve;
+    });
+    api.bulk.bulkOrganize.mockReturnValueOnce(request);
+    const wrapper = mountDialog({ modelValue: true, mode: "bulk", recipes: [recipe] });
+
+    await wrapper.get("[data-selector=\"tags\"]").trigger("click");
+    const saveButton = wrapper.find("button[data-save]");
+    await saveButton.trigger("click");
+    await saveButton.trigger("click");
+
+    expect(api.bulk.bulkOrganize).toHaveBeenCalledTimes(1);
+
+    resolveRequest({ data: [recipe], error: null });
+    await flushPromises();
+    expect(wrapper.emitted("saved")).toHaveLength(1);
   });
 
   it("disables bulk save until an organizer is selected", () => {

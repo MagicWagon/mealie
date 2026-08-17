@@ -254,7 +254,7 @@ import { useLoggedInState } from "~/composables/use-logged-in-state";
 import { useLazyRecipes } from "~/composables/recipes";
 import { useUserApi } from "~/composables/api";
 import { alert } from "~/composables/use-toast";
-import type { Recipe } from "~/lib/api/types/recipe";
+import type { Recipe, RecipeSummary } from "~/lib/api/types/recipe";
 import { useUserSortPreferences } from "~/composables/use-users/preferences";
 import type { RecipeSearchQuery } from "~/lib/api/user/recipes/recipe";
 import RecipeQuickOrganizeDialog from "./RecipeQuickOrganizeDialog.vue";
@@ -286,7 +286,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   replaceRecipes: [recipes: Recipe[]];
   appendRecipes: [recipes: Recipe[]];
-  recipesUpdated: [recipes: Recipe[]];
+  recipesUpdated: [recipes: RecipeSummary[]];
 }>();
 
 const display = useDisplay();
@@ -467,7 +467,7 @@ function openBulkOrganizer() {
   organizerDialog.value = true;
 }
 
-function handleOrganizerSaved(updatedRecipes: Recipe[]) {
+function handleOrganizerSaved(updatedRecipes: RecipeSummary[]) {
   emit("recipesUpdated", updatedRecipes);
 
   if (organizerMode.value === "bulk") {

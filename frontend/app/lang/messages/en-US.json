@@ -575,6 +575,8 @@
     "recipe-settings": "Recipe Settings",
     "recipe-update-failed": "Recipe update failed",
     "recipe-updated": "Recipe updated",
+    "select-recipe": "Select {name}",
+    "deselect-recipe": "Deselect {name}",
     "organize-recipe": "Organize Recipe",
     "organize-recipes": "Organize Recipes",
     "add-organizers": "Add",

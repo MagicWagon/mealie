@@ -94,9 +94,57 @@ describe.each([
     });
 
     expect(wrapper.find("a.recipe-card-link").exists()).toBe(false);
+    expect(wrapper.getComponent(commonStubs.VCard).attributes("tabindex")).toBeUndefined();
     await wrapper.get(".recipe-card-stub").trigger("click");
     expect(wrapper.emitted("click") || wrapper.emitted("selected")).toHaveLength(1);
     expect(wrapper.find("button[aria-label=\"Organize\"]").exists()).toBe(false);
+  });
+
+  it("exposes the recipe selection state through one labeled toggle control", async () => {
+    const wrapper = shallowMount(component, {
+      props: {
+        ...props,
+        selectMode: true,
+        selected: false,
+      },
+      global: {
+        mocks: {
+          $globals: globals,
+        },
+        stubs: commonStubs,
+      },
+    });
+
+    const selectionButton = wrapper.get("button.recipe-card-selection");
+    expect(selectionButton.attributes("aria-label")).toBe("Select Recipe");
+    expect(selectionButton.attributes("aria-pressed")).toBe("false");
+    expect(wrapper.findAll("[tabindex]")).toHaveLength(0);
+
+    await wrapper.setProps({ selected: true });
+
+    expect(selectionButton.attributes("aria-label")).toBe("Deselect Recipe");
+    expect(selectionButton.attributes("aria-pressed")).toBe("true");
+  });
+
+  it("activates the selection toggle exactly once from the keyboard target", async () => {
+    const wrapper = shallowMount(component, {
+      props: {
+        ...props,
+        selectMode: true,
+        selected: false,
+      },
+      global: {
+        mocks: {
+          $globals: globals,
+        },
+        stubs: commonStubs,
+      },
+    });
+
+    await wrapper.get("button.recipe-card-selection").trigger("click");
+
+    const eventName = component === RecipeCard ? "click" : "selected";
+    expect(wrapper.emitted(eventName)).toHaveLength(1);
   });
 
   it("uses the selected-state icon for the selection control", () => {
