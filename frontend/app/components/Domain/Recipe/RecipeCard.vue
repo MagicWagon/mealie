@@ -10,9 +10,12 @@
         :class="{ 'on-hover': isHovering, 'recipe-card--selected': selected }"
         :style="{ cursor }"
         :elevation="isHovering ? 12 : 2"
-        :to="selectMode ? undefined : recipeRoute"
+        :to="selectMode || showOrganizer ? undefined : recipeRoute"
+        :role="!selectMode && showOrganizer && showRecipeContent ? 'link' : undefined"
+        :tabindex="!selectMode && showOrganizer && showRecipeContent ? 0 : undefined"
         :min-height="imageHeight + 75"
         @click="handleCardClick"
+        @keydown.enter.self="navigateToRecipe"
       >
         <v-btn
           v-if="selectMode"
@@ -25,7 +28,7 @@
           @click.stop="$emit('click')"
         >
           <v-icon>
-            {{ selected ? $globals.icons.checkboxMarkedCircle : $globals.icons.checkboxMultipleBlankOutline }}
+            {{ selected ? $globals.icons.checkboxMarkedCircle : $globals.icons.checkboxBlankCircleOutline }}
           </v-icon>
         </v-btn>
         <RecipeCardImage
@@ -176,6 +179,7 @@ const emit = defineEmits<{
 }>();
 
 const auth = useMealieAuth();
+const router = useRouter();
 const { isOwnGroup } = useLoggedInState();
 
 const route = useRoute();
@@ -187,12 +191,25 @@ const recipeRoute = computed<string>(() => {
 const cursor = computed(() => props.selectMode || showRecipeContent.value ? "pointer" : "auto");
 
 function handleCardClick(event: MouseEvent) {
-  if (!props.selectMode) {
+  if (props.selectMode) {
+    event.preventDefault();
+    emit("click");
     return;
   }
 
-  event.preventDefault();
-  emit("click");
+  if (event.defaultPrevented || (event.target instanceof Element && event.target.closest("button, a, input, select, textarea, [role='button']"))) {
+    return;
+  }
+
+  if (props.showOrganizer && recipeRoute.value) {
+    navigateToRecipe();
+  }
+}
+
+function navigateToRecipe() {
+  if (!props.selectMode && recipeRoute.value) {
+    void router.push(recipeRoute.value);
+  }
 }
 </script>
 
