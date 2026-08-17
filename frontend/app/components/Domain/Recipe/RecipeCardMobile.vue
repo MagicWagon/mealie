@@ -4,15 +4,31 @@
       <v-card
         :ripple="false"
         :class="[
+          'recipe-card',
           isFlat ? 'mx-auto flat' : 'mx-auto',
-          { 'disable-highlight': disableHighlight },
+          { 'disable-highlight': disableHighlight, 'recipe-card--selected': selected },
         ]"
         :style="{ cursor }"
         hover
         height="100%"
-        :to="$attrs.selected ? undefined : recipeRoute"
-        @click="$emit('selected')"
+        :to="selectMode ? undefined : recipeRoute"
+        @click="handleCardClick"
       >
+        <v-btn
+          v-if="selectMode"
+          class="recipe-card-selection"
+          icon
+          size="small"
+          variant="flat"
+          color="info"
+          :aria-label="selectionLabel"
+          :aria-pressed="selected"
+          @click.stop="$emit('selected')"
+        >
+          <v-icon>
+            {{ selected ? $globals.icons.checkboxMarkedCircle : $globals.icons.checkboxBlankCircleOutline }}
+          </v-icon>
+        </v-btn>
         <v-img
           v-if="vertical"
           class="rounded-sm"
@@ -68,6 +84,7 @@
               style="overflow-x: hidden; overflow-y: hidden; white-space: nowrap;"
             >
               <RecipeChips
+                class="recipe-card-tags"
                 :truncate="true"
                 :items="tags"
                 :title="false"
@@ -79,7 +96,7 @@
             </div>
           </div>
           <slot name="actions">
-            <v-card-actions class="w-100 my-0 px-1 py-0">
+            <v-card-actions class="recipe-card-actions w-100 my-0 px-1 py-0">
               <RecipeFavoriteBadge
                 v-if="isOwnGroup && showRecipeContent"
                 :recipe-id="recipeId"
@@ -93,6 +110,26 @@
                 :model-value="rating"
                 :recipe-id="recipeId"
               />
+
+              <v-tooltip
+                v-if="showOrganizer && !selectMode && isOwnGroup && showRecipeContent"
+                location="bottom"
+                color="info"
+              >
+                <template #activator="{ props: tooltipProps }">
+                  <v-btn
+                    icon
+                    variant="text"
+                    size="small"
+                    v-bind="tooltipProps"
+                    :aria-label="$t('settings.organize')"
+                    @click.stop.prevent="$emit('organize')"
+                  >
+                    <v-icon>{{ $globals.icons.organizers }}</v-icon>
+                  </v-btn>
+                </template>
+                <span>{{ $t("settings.organize") }}</span>
+              </v-tooltip>
 
               <!-- If we're not logged-in, no items display, so we hide this menu -->
               <!-- We also add padding to the v-rating above to compensate -->
@@ -153,6 +190,9 @@ interface Props {
   disableHighlight?: boolean;
   contextMenuAppendItems?: ContextMenuItem[];
   contextMenuLeadingItems?: ContextMenuItem[];
+  showOrganizer?: boolean;
+  selectMode?: boolean;
+  selected?: boolean;
 }
 const props = withDefaults(defineProps<Props>(), {
   rating: 0,
@@ -162,17 +202,23 @@ const props = withDefaults(defineProps<Props>(), {
   isFlat: false,
   height: 150,
   disableHighlight: false,
+  showOrganizer: false,
+  selectMode: false,
+  selected: false,
 });
 
-defineEmits<{
+const emit = defineEmits<{
   mealplanRemove: [];
   mealplanEdit: [];
   selected: [];
+  organize: [];
   delete: [slug: string];
 }>();
 
 const auth = useMealieAuth();
 const { isOwnGroup } = useLoggedInState();
+const i18n = useI18n();
+const { $globals } = useNuxtApp();
 
 const route = useRoute();
 const groupSlug = computed(() => route.params.groupSlug || auth.user.value?.groupSlug || "");
@@ -180,10 +226,29 @@ const showRecipeContent = computed(() => props.recipeId && props.slug);
 const recipeRoute = computed<string>(() => {
   return showRecipeContent.value ? `/g/${groupSlug.value}/r/${props.slug}` : "";
 });
-const cursor = computed(() => showRecipeContent.value ? "pointer" : "auto");
+const cursor = computed(() => props.selectMode || showRecipeContent.value ? "pointer" : "auto");
+const selectionLabel = computed(() => i18n.t(
+  props.selected ? "recipe.deselect-recipe" : "recipe.select-recipe",
+  { name: props.name },
+));
+function handleCardClick(event: MouseEvent) {
+  if (!props.selectMode) {
+    return;
+  }
+
+  if (event.target instanceof Element && event.target.closest("button, a, input, select, textarea, [role='button']")) {
+    return;
+  }
+
+  event.preventDefault();
+  emit("selected");
+}
 </script>
 
 <style scoped>
+.recipe-card {
+  position: relative;
+}
 :deep(.v-list-item__prepend) {
   height: 100%;
 }
@@ -222,5 +287,14 @@ const cursor = computed(() => showRecipeContent.value ? "pointer" : "auto");
 
 .disable-highlight :deep(.v-card__overlay) {
   opacity: 0 !important;
+}
+.recipe-card-selection {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  z-index: 3;
+}
+.recipe-card--selected {
+  outline: 3px solid rgb(var(--v-theme-info));
 }
 </style>

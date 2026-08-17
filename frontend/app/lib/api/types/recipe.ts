@@ -5,6 +5,7 @@
 /* Do not modify it by hand - just update the pydantic models and then re-run the script
 */
 
+export type OrganizerOperation = "add" | "remove";
 export type ExportTypes = "json";
 export type RegisteredParser = "nlp" | "brute" | "openai";
 export type OrderByNullPosition = "first" | "last";
@@ -43,6 +44,12 @@ export interface TagBase {
   id: string;
   groupId?: string | null;
   slug: string;
+}
+export interface BulkOrganizeRecipes {
+  recipes: [string, ...string[]];
+  operation: OrganizerOperation;
+  tags?: TagBase[];
+  categories?: CategoryBase[];
 }
 export interface CategoryIn {
   name: string;

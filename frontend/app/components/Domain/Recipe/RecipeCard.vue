@@ -7,13 +7,28 @@
     >
       <v-card
         v-bind="hoverProps"
-        :class="{ 'on-hover': isHovering }"
+        :class="['recipe-card', { 'on-hover': isHovering, 'recipe-card--selected': selected }]"
         :style="{ cursor }"
         :elevation="isHovering ? 12 : 2"
-        :to="recipeRoute"
+        :to="selectMode ? undefined : recipeRoute"
         :min-height="imageHeight + 75"
-        @click.self="$emit('click')"
+        @click="handleCardClick"
       >
+        <v-btn
+          v-if="selectMode"
+          class="recipe-card-selection"
+          icon
+          size="small"
+          variant="flat"
+          color="info"
+          :aria-label="selectionLabel"
+          :aria-pressed="selected"
+          @click.stop="$emit('click')"
+        >
+          <v-icon>
+            {{ selected ? $globals.icons.checkboxMarkedCircle : $globals.icons.checkboxBlankCircleOutline }}
+          </v-icon>
+        </v-btn>
         <RecipeCardImage
           small
           :icon-size="imageHeight"
@@ -36,7 +51,7 @@
             </div>
           </v-expand-transition>
         </RecipeCardImage>
-        <v-card-title class="px-4" style="font-size: 1.25rem;">
+        <v-card-title class="mb-n3 px-4" style="font-size: 1.25rem;">
           {{ name }}
         </v-card-title>
 
@@ -73,6 +88,25 @@
                 :recipe-id="recipeId"
               />
               <v-spacer />
+              <v-tooltip
+                v-if="showOrganizer && !selectMode && isOwnGroup && showRecipeContent"
+                location="bottom"
+                color="info"
+              >
+                <template #activator="{ props: tooltipProps }">
+                  <v-btn
+                    icon
+                    variant="text"
+                    size="small"
+                    v-bind="tooltipProps"
+                    :aria-label="$t('settings.organize')"
+                    @click.stop.prevent="$emit('organize')"
+                  >
+                    <v-icon>{{ $globals.icons.organizers }}</v-icon>
+                  </v-btn>
+                </template>
+                <span>{{ $t("settings.organize") }}</span>
+              </v-tooltip>
               <!-- If we're not logged-in, no items display, so we hide this menu -->
               <RecipeContextMenu
                 v-if="isOwnGroup && showRecipeContent"
@@ -120,6 +154,9 @@ interface Props {
   tags?: Array<any>;
   recipeId: string;
   imageHeight?: number;
+  showOrganizer?: boolean;
+  selectMode?: boolean;
+  selected?: boolean;
 }
 const props = withDefaults(defineProps<Props>(), {
   description: null,
@@ -128,15 +165,21 @@ const props = withDefaults(defineProps<Props>(), {
   image: undefined,
   tags: () => [],
   imageHeight: 200,
+  showOrganizer: false,
+  selectMode: false,
+  selected: false,
 });
 
-defineEmits<{
+const emit = defineEmits<{
   click: [];
+  organize: [];
   delete: [slug: string];
 }>();
 
 const auth = useMealieAuth();
 const { isOwnGroup } = useLoggedInState();
+const i18n = useI18n();
+const { $globals } = useNuxtApp();
 
 const route = useRoute();
 const groupSlug = computed(() => route.params.groupSlug || auth.user.value?.groupSlug || "");
@@ -144,10 +187,29 @@ const showRecipeContent = computed(() => props.recipeId && props.slug);
 const recipeRoute = computed<string>(() => {
   return showRecipeContent.value ? `/g/${groupSlug.value}/r/${props.slug}` : "";
 });
-const cursor = computed(() => showRecipeContent.value ? "pointer" : "auto");
+const cursor = computed(() => props.selectMode || showRecipeContent.value ? "pointer" : "auto");
+const selectionLabel = computed(() => i18n.t(
+  props.selected ? "recipe.deselect-recipe" : "recipe.select-recipe",
+  { name: props.name },
+));
+function handleCardClick(event: MouseEvent) {
+  if (!props.selectMode) {
+    return;
+  }
+
+  if (event.target instanceof Element && event.target.closest("button, a, input, select, textarea, [role='button']")) {
+    return;
+  }
+
+  event.preventDefault();
+  emit("click");
+}
 </script>
 
 <style>
+.recipe-card {
+  position: relative;
+}
 .v-card--reveal {
   align-items: center;
   bottom: 0;
@@ -201,5 +263,14 @@ const cursor = computed(() => showRecipeContent.value ? "pointer" : "auto");
 }
 .recipe-card-actions {
   width: 100%;
+}
+.recipe-card-selection {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  z-index: 3;
+}
+.recipe-card--selected {
+  outline: 3px solid rgb(var(--v-theme-info));
 }
 </style>

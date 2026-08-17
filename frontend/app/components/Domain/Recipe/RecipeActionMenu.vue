@@ -41,6 +41,26 @@
               color="info"
               class="ml-1"
               v-bind="tooltipProps"
+              :aria-label="$t('settings.organize')"
+              @click="$emit('organize')"
+            >
+              <v-icon size="x-large">
+                {{ $globals.icons.organizers }}
+              </v-icon>
+            </v-btn>
+          </template>
+          <span>{{ $t("settings.organize") }}</span>
+        </v-tooltip>
+        <v-tooltip v-if="canEdit" location="bottom" color="info">
+          <template #activator="{ props: tooltipProps }">
+            <v-btn
+              icon
+              variant="flat"
+              rounded="circle"
+              size="small"
+              color="info"
+              class="ml-1"
+              v-bind="tooltipProps"
               @click="$emit('edit', true)"
             >
               <v-icon size="x-large">
@@ -110,6 +130,7 @@ const SAVE_EVENT = "save";
 const DELETE_EVENT = "delete";
 const CLOSE_EVENT = "close";
 const JSON_EVENT = "json";
+const ORGANIZE_EVENT = "organize";
 
 interface Props {
   recipe: Recipe;
@@ -121,20 +142,28 @@ interface Props {
   recipeId: string;
   canEdit?: boolean;
 }
-withDefaults(defineProps<Props>(), {
+const props = withDefaults(defineProps<Props>(), {
   recipeScale: 1,
   loggedIn: false,
   canEdit: false,
 });
 
-const emit = defineEmits(["print", "input", "save", "delete", "close", "json", "edit"]);
+const emit = defineEmits(["print", "input", "save", "delete", "close", "json", "edit", "organize"]);
 
 const deleteDialog = ref(false);
 
 const i18n = useI18n();
 const { $globals } = useNuxtApp();
 
-const editorButtons = [
+const editorButtons = computed(() => [
+  ...(props.loggedIn && props.canEdit
+    ? [{
+        text: i18n.t("settings.organize"),
+        icon: $globals.icons.organizers,
+        event: ORGANIZE_EVENT,
+        color: "info",
+      }]
+    : []),
   {
     text: i18n.t("general.delete"),
     icon: $globals.icons.delete,
@@ -159,7 +188,7 @@ const editorButtons = [
     event: SAVE_EVENT,
     color: "success",
   },
-];
+]);
 
 function emitHandler(event: string) {
   switch (event) {
