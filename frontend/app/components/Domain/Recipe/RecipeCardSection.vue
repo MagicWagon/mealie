@@ -6,6 +6,12 @@
       :mode="organizerMode"
       @saved="handleOrganizerSaved"
     />
+    <span
+      v-if="!disableToolbar"
+      ref="selectionToolbarMarker"
+      class="recipe-selection-toolbar-marker"
+      aria-hidden="true"
+    />
     <v-row
       v-if="!disableToolbar"
       class="align-center pb-2"
@@ -160,7 +166,7 @@
           @click="clearSelection"
         >
           <v-icon :start="!$vuetify.display.xs">
-            {{ $globals.icons.close }}
+            {{ $globals.icons.selectionRemove }}
           </v-icon>
           {{ $vuetify.display.xs ? null : $t("general.clear") }}
         </v-btn>
@@ -176,6 +182,70 @@
         </v-btn>
       </div>
     </v-row>
+    <v-slide-y-transition>
+      <div
+        v-if="selectionMode && !toolbarVisible"
+        class="recipe-selection-floating-bar d-flex align-center ga-1 pa-1 bg-background rounded-pill elevation-6 d-print-none"
+        role="toolbar"
+        :aria-label="$t('general.selected-count', { count: selectedRecipes.length })"
+      >
+        <v-chip
+          size="small"
+          label
+          class="px-2"
+          :aria-label="$t('general.selected-count', { count: selectedRecipes.length })"
+        >
+          {{ selectedRecipes.length }}
+        </v-chip>
+        <v-tooltip location="bottom">
+          <template #activator="{ props: tooltipProps }">
+            <v-btn
+              v-bind="tooltipProps"
+              icon
+              size="small"
+              variant="text"
+              :disabled="selectedRecipes.length === 0"
+              :aria-label="$t('settings.organize')"
+              @click="openBulkOrganizer"
+            >
+              <v-icon>{{ $globals.icons.organizers }}</v-icon>
+            </v-btn>
+          </template>
+          {{ $t("settings.organize") }}
+        </v-tooltip>
+        <v-tooltip location="bottom">
+          <template #activator="{ props: tooltipProps }">
+            <v-btn
+              v-bind="tooltipProps"
+              icon
+              size="small"
+              variant="text"
+              :disabled="selectedRecipes.length === 0"
+              :aria-label="$t('general.clear')"
+              @click="clearSelection"
+            >
+              <v-icon>{{ $globals.icons.selectionRemove }}</v-icon>
+            </v-btn>
+          </template>
+          {{ $t("general.clear") }}
+        </v-tooltip>
+        <v-tooltip location="bottom">
+          <template #activator="{ props: tooltipProps }">
+            <v-btn
+              v-bind="tooltipProps"
+              icon
+              size="small"
+              variant="text"
+              :aria-label="$t('recipe.exit-selection')"
+              @click="exitSelectionMode"
+            >
+              <v-icon>{{ $globals.icons.close }}</v-icon>
+            </v-btn>
+          </template>
+          {{ $t("recipe.exit-selection") }}
+        </v-tooltip>
+      </div>
+    </v-slide-y-transition>
     <div v-if="recipes && ready">
       <div class="mt-2">
         <v-row v-if="!useMobileCards">
@@ -247,7 +317,7 @@
 </template>
 
 <script setup lang="ts">
-import { useThrottleFn } from "@vueuse/core";
+import { useIntersectionObserver, useThrottleFn } from "@vueuse/core";
 import RecipeCard from "./RecipeCard.vue";
 import RecipeCardMobile from "./RecipeCardMobile.vue";
 import { useLoggedInState } from "~/composables/use-logged-in-state";
@@ -338,6 +408,16 @@ let selectAllGeneration = 0;
 const organizerDialog = ref(false);
 const organizerMode = ref<"single" | "bulk">("single");
 const organizerRecipes = ref<Recipe[]>([]);
+const selectionToolbarMarker = ref<HTMLElement | null>(null);
+const toolbarVisible = ref(true);
+
+useIntersectionObserver(
+  selectionToolbarMarker,
+  ([entry]) => {
+    toolbarVisible.value = entry?.isIntersecting ?? true;
+  },
+  { rootMargin: "-48px 0px 0px 0px" },
+);
 
 function recipeKey(recipe: Recipe): string {
   return recipe.id || recipe.slug || "";
@@ -686,5 +766,19 @@ function toggleMobileCards() {
 <style>
 .transparent {
   opacity: 1;
+}
+
+.recipe-selection-toolbar-marker {
+  display: block;
+  height: 1px;
+  margin-bottom: -1px;
+  pointer-events: none;
+}
+
+.recipe-selection-floating-bar {
+  position: fixed;
+  top: 60px;
+  right: 12px;
+  z-index: 2000;
 }
 </style>

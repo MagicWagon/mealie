@@ -1,6 +1,18 @@
 import { flushPromises, shallowMount } from "@vue/test-utils";
-import { ref } from "vue";
+import { nextTick, ref } from "vue";
 import RecipeCardSection from "../RecipeCardSection.vue";
+
+let intersectionCallback: IntersectionObserverCallback | undefined;
+
+class TestIntersectionObserver {
+  constructor(callback: IntersectionObserverCallback) {
+    intersectionCallback = callback;
+  }
+
+  observe() {}
+
+  disconnect() {}
+}
 
 const { api, fetchMore, alert } = vi.hoisted(() => ({
   api: {
@@ -47,13 +59,23 @@ const stubs = {
     inheritAttrs: false,
     emits: ["click"],
     props: ["disabled", "loading"],
-    template: "<button :disabled='disabled' :data-loading='loading ? true : undefined' @click='$emit(\"click\")'><slot /></button>",
+    template: "<button v-bind='$attrs' :disabled='disabled' :data-loading='loading ? true : undefined' @click='$emit(\"click\")'><slot /></button>",
   },
   VMenu: {
     template: "<div><slot name='activator' :props='{}' /><slot /></div>",
   },
   VRow: {
     template: "<div><slot /></div>",
+  },
+  VSlideYTransition: {
+    template: "<div><slot /></div>",
+  },
+  VTooltip: {
+    template: "<div><slot name='activator' :props='{}' /><slot /></div>",
+  },
+  VChip: {
+    inheritAttrs: false,
+    template: "<span v-bind='$attrs'><slot /></span>",
   },
   VCol: {
     template: "<div><slot /></div>",
@@ -95,6 +117,8 @@ function deferred<T>() {
 }
 
 function mountSection(query: Record<string, unknown> = {}) {
+  intersectionCallback = undefined;
+  vi.stubGlobal("IntersectionObserver", TestIntersectionObserver);
   vi.stubGlobal("useDisplay", () => ({ smAndDown: ref(false), xs: ref(false) }));
   vi.stubGlobal("useMealieAuth", () => ({ user: { value: { groupSlug: "group" } } }));
   vi.stubGlobal("useRoute", () => ({ params: { groupSlug: "group" }, path: "/recipes" }));
@@ -112,6 +136,7 @@ function mountSection(query: Record<string, unknown> = {}) {
         checkboxMultipleBlankOutline: "select",
         checkboxMultipleMarkedOutline: "select-all",
         organizers: "organize",
+        selectionRemove: "selection-remove",
         close: "close",
         eye: "eye",
       },
@@ -134,6 +159,7 @@ function mountSection(query: Record<string, unknown> = {}) {
             checkboxMultipleBlankOutline: "select",
             checkboxMultipleMarkedOutline: "select-all",
             organizers: "organize",
+            selectionRemove: "selection-remove",
             close: "close",
             eye: "eye",
           },
@@ -274,5 +300,65 @@ describe("RecipeCardSection selection requests", () => {
     await flushPromises();
 
     expect(wrapper.text()).toContain("Selected: 2");
+  });
+
+  it("shows the compact actions only after the full toolbar leaves the viewport", async () => {
+    const wrapper = mountSection();
+    await flushPromises();
+
+    expect(wrapper.find(".recipe-selection-floating-bar").exists()).toBe(false);
+
+    await buttonByText(wrapper, "Select")!.trigger("click");
+    expect(wrapper.find(".recipe-selection-floating-bar").exists()).toBe(false);
+
+    intersectionCallback?.(
+      [{ isIntersecting: false } as IntersectionObserverEntry],
+      {} as IntersectionObserver,
+    );
+    await nextTick();
+    expect(wrapper.find(".recipe-selection-floating-bar").exists()).toBe(true);
+    expect(wrapper.findAll(".recipe-selection-floating-bar button")).toHaveLength(3);
+
+    intersectionCallback?.(
+      [{ isIntersecting: true } as IntersectionObserverEntry],
+      {} as IntersectionObserver,
+    );
+    await nextTick();
+    expect(wrapper.find(".recipe-selection-floating-bar").exists()).toBe(false);
+  });
+
+  it("keeps compact actions accessible and wired to selection handlers", async () => {
+    const wrapper = mountSection();
+    await flushPromises();
+
+    await buttonByText(wrapper, "Select")!.trigger("click");
+    intersectionCallback?.(
+      [{ isIntersecting: false } as IntersectionObserverEntry],
+      {} as IntersectionObserver,
+    );
+    await nextTick();
+
+    let actionButtons = wrapper.findAll(".recipe-selection-floating-bar button");
+    expect(actionButtons[0]!.attributes("aria-label")).toBeDefined();
+    expect(actionButtons[1]!.attributes("aria-label")).toBeDefined();
+    expect(actionButtons[2]!.attributes("aria-label")).toBeDefined();
+    expect(actionButtons[0]!.attributes("disabled")).toBeDefined();
+    expect(actionButtons[1]!.attributes("disabled")).toBeDefined();
+    expect(actionButtons[2]!.attributes("disabled")).toBeUndefined();
+
+    await wrapper.get("[data-recipe-card]").trigger("click");
+    actionButtons = wrapper.findAll(".recipe-selection-floating-bar button");
+    expect(actionButtons[0]!.attributes("disabled")).toBeUndefined();
+    expect(actionButtons[1]!.attributes("disabled")).toBeUndefined();
+
+    await actionButtons[0]!.trigger("click");
+    expect((wrapper.vm as { organizerDialog: boolean }).organizerDialog).toBe(true);
+
+    await actionButtons[1]!.trigger("click");
+    expect(wrapper.text()).toContain("Selected: 0");
+
+    await actionButtons[2]!.trigger("click");
+    expect(wrapper.find(".recipe-selection-floating-bar").exists()).toBe(false);
+    expect(buttonByText(wrapper, "Select")).toBeDefined();
   });
 });
