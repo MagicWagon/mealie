@@ -185,7 +185,7 @@
     <v-slide-y-transition>
       <div
         v-if="selectionMode && !toolbarVisible"
-        class="recipe-selection-floating-bar d-flex align-center ga-1 pa-1 bg-background rounded-pill elevation-6 d-print-none"
+        class="recipe-selection-floating-bar d-flex align-center ga-1 pa-1 bg-background rounded elevation-6 d-print-none"
         role="toolbar"
         :aria-label="$t('general.selected-count', { count: selectedRecipes.length })"
       >
