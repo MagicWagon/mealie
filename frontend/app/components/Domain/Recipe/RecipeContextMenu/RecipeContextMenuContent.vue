@@ -1,6 +1,5 @@
 <template>
   <RecipeDialogShare v-model="shareDialog" :recipe-id="recipeId" :name="name" />
-  <RecipeDialogPublicShare v-model="publicShareDialog" :link="publicRecipeLink" :name="name" />
   <RecipeDialogPrintPreferences v-model="printPreferencesDialog" :recipe="recipeRef" />
   <BaseDialog
     v-model="recipeDeleteDialog"
@@ -76,21 +75,19 @@
 </template>
 
 <script setup lang="ts">
+import { useClipboard, useShare } from "@vueuse/core";
 import RecipeDialogAddToShoppingList from "~/components/Domain/Recipe/RecipeDialogAddToShoppingList.vue";
 import RecipeDialogPrintPreferences from "~/components/Domain/Recipe/RecipeDialogPrintPreferences.vue";
-import RecipeDialogPublicShare from "~/components/Domain/Recipe/RecipeDialogPublicShare.vue";
 import RecipeDialogShare from "~/components/Domain/Recipe/RecipeDialogShare.vue";
 import { useUserApi } from "~/composables/api";
 import { useDownloader } from "~/composables/api/use-downloader";
 import { useAddToShoppingListDialog } from "~/composables/shopping-list-page/use-add-to-shopping-list-dialog";
 import { useGroupRecipeActions } from "~/composables/use-group-recipe-actions";
 import { useGroupSelf } from "~/composables/use-groups";
-import { useHouseholdSelf } from "~/composables/use-households";
 import { useLoggedInState } from "~/composables/use-logged-in-state";
 import { alert } from "~/composables/use-toast";
 import type { GroupRecipeActionOut, HouseholdSummary } from "~/lib/api/types/household";
 import type { Recipe } from "~/lib/api/types/recipe";
-import { resolveAbsoluteAppUrl } from "~/lib/recipe/recipe-link";
 import { isRecipeFullyPublic } from "~/lib/recipe/recipe-visibility";
 
 export interface ContextMenuIncludes {
@@ -164,7 +161,6 @@ const { open: shoppingListDialog, shoppingLists, getShoppingLists } = useAddToSh
 
 const printPreferencesDialog = ref(false);
 const shareDialog = ref(false);
-const publicShareDialog = ref(false);
 const recipeDeleteDialog = ref(false);
 const mealplannerDialog = ref(false);
 const recipeDuplicateDialog = ref(false);
@@ -176,24 +172,35 @@ const i18n = useI18n();
 const auth = useMealieAuth();
 const { $globals } = useNuxtApp();
 const { group, actions: groupActions } = useGroupSelf();
-const { household } = useHouseholdSelf();
 const { isOwnGroup } = useLoggedInState();
 
 const route = useRoute();
-const router = useRouter();
 const groupSlug = computed(() => route.params.groupSlug as string || auth.user.value?.groupSlug || "");
 
-const publicRecipeLink = computed(() => {
-  if (import.meta.server) {
-    return "";
-  }
+const { share, isSupported: shareIsSupported } = useShare();
+const { copy, copied, isSupported: clipboardIsSupported } = useClipboard();
 
-  return resolveAbsoluteAppUrl(
-    router,
-    `/g/${groupSlug.value}/r/${props.slug}`,
-    window.location.origin,
+function getPlainRecipeLink() {
+  return `${window.location.origin}/g/${groupSlug.value}/r/${props.slug}`;
+}
+
+async function sharePlainLink() {
+  if (shareIsSupported.value) {
+    await share({
+      title: props.name,
+      url: getPlainRecipeLink(),
+    });
+    return;
+  }
+  if (!clipboardIsSupported.value) {
+    alert.error(i18n.t("general.clipboard-not-supported") as string);
+    return;
+  }
+  await copy(getPlainRecipeLink());
+  alert[copied.value ? "success" : "error"](
+    i18n.t(copied.value ? "recipe-share.recipe-link-copied-message" : "general.clipboard-copy-failure") as string,
   );
-});
+}
 
 // ===========================================================================
 // Context Menu Setup
@@ -332,6 +339,7 @@ async function refreshRecipe() {
   }
 }
 
+const router = useRouter();
 const groupRecipeActionsStore = useGroupRecipeActions();
 
 async function executeRecipeAction(action: GroupRecipeActionOut) {
@@ -407,26 +415,21 @@ const eventHandlers: { [key: string]: () => void | Promise<any> } = {
     });
   },
   share: async () => {
-    try {
-      // Resolve the visibility data before choosing a permanent or token link.
-      if (!recipeRef.value) {
-        await refreshRecipe();
-      }
-      if (!group.value) {
-        await groupActions.refresh();
-      }
-      await refreshRecipeHousehold();
-
-      if (isFullyPublic.value) {
-        publicShareDialog.value = true;
-      }
-      else {
-        shareDialog.value = true;
-      }
+    // resolve everything the visibility check needs, so we don't fall back to a
+    // share token just because the recipe/group/household hadn't loaded yet
+    if (!recipeRef.value) {
+      await refreshRecipe();
     }
-    catch (error) {
-      console.error("Failed to prepare recipe sharing", error);
-      alert.error(i18n.t("events.something-went-wrong") as string);
+    if (!group.value) {
+      await groupActions.refresh();
+    }
+    await refreshRecipeHousehold();
+
+    if (isFullyPublic.value) {
+      await sharePlainLink();
+    }
+    else {
+      shareDialog.value = true;
     }
   },
 };

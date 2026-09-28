@@ -91,12 +91,11 @@
 </template>
 
 <script setup lang="ts">
-import { useClipboard, whenever } from "@vueuse/core";
+import { useClipboard, useShare, whenever } from "@vueuse/core";
 import type { RecipeShareToken } from "~/lib/api/types/recipe";
 import { useUserApi } from "~/composables/api";
 import { useHouseholdSelf } from "~/composables/use-households";
 import { alert } from "~/composables/use-toast";
-import { resolveAbsoluteAppUrl } from "~/lib/recipe/recipe-link";
 
 interface Props {
   recipeId: string;
@@ -124,7 +123,6 @@ const i18n = useI18n();
 const auth = useMealieAuth();
 const { household } = useHouseholdSelf();
 const route = useRoute();
-const router = useRouter();
 const groupSlug = computed(() => route.params.groupSlug as string || auth.user.value?.groupSlug || "");
 
 const firstDayOfWeek = computed(() => {
@@ -162,32 +160,20 @@ async function refreshTokens() {
   }
 }
 
+const { share, isSupported: shareIsSupported } = useShare();
 const { copy, copied, isSupported } = useClipboard();
 
-const nativeShareSupported = computed(() =>
-  typeof navigator !== "undefined" && typeof navigator.share === "function",
-);
-
 function getTokenLink(token: string) {
-  return resolveAbsoluteAppUrl(
-    router,
-    `/g/${groupSlug.value}/shared/r/${token}`,
-    window.location.origin,
-  );
+  return `${window.location.origin}/g/${groupSlug.value}/shared/r/${token}`;
 }
 
 async function copyTokenLink(token: string) {
   if (isSupported.value) {
-    try {
-      await copy(getTokenLink(token));
-      if (copied.value) {
-        alert.success(i18n.t("recipe-share.recipe-link-copied-message") as string);
-      }
-      else {
-        alert.error(i18n.t("general.clipboard-copy-failure") as string);
-      }
+    await copy(getTokenLink(token));
+    if (copied.value) {
+      alert.success(i18n.t("recipe-share.recipe-link-copied-message") as string);
     }
-    catch {
+    else {
       alert.error(i18n.t("general.clipboard-copy-failure") as string);
     }
   }
@@ -197,25 +183,14 @@ async function copyTokenLink(token: string) {
 }
 
 async function shareRecipe(token: string) {
-  if (nativeShareSupported.value) {
-    try {
-      await navigator.share({
-        title: props.name,
-        url: getTokenLink(token),
-      });
-    }
-    catch (error) {
-      if (!isShareCancelled(error)) {
-        alert.error(i18n.t("events.something-went-wrong") as string);
-      }
-    }
+  if (shareIsSupported.value) {
+    share({
+      title: props.name,
+      url: getTokenLink(token),
+    });
   }
   else {
     await copyTokenLink(token);
   }
-}
-
-function isShareCancelled(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "name" in error && error.name === "AbortError";
 }
 </script>
